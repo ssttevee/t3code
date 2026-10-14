@@ -199,6 +199,30 @@ export function mergePathEntries(
   return merged.length > 0 ? merged.join(delimiter) : undefined;
 }
 
+export function hydrateSshAgentEnvironment(
+  env: NodeJS.ProcessEnv,
+  shellEnvironment: Partial<Record<string, string>>,
+  platform: NodeJS.Platform,
+): void {
+  const socket = shellEnvironment.SSH_AUTH_SOCK;
+  if (!socket) return;
+
+  const inheritedSocket = env.SSH_AUTH_SOCK;
+  const isMacOsDefaultSocket =
+    platform === "darwin" &&
+    /^\/(?:private\/)?(?:tmp|var\/run)\/com\.apple\.launchd\.[^/]+\/Listeners$/.test(
+      inheritedSocket ?? "",
+    );
+  if (inheritedSocket && !isMacOsDefaultSocket) return;
+
+  env.SSH_AUTH_SOCK = socket;
+  if (shellEnvironment.SSH_AGENT_PID) {
+    env.SSH_AGENT_PID = shellEnvironment.SSH_AGENT_PID;
+  } else {
+    delete env.SSH_AGENT_PID;
+  }
+}
+
 function envCaptureStart(name: string): string {
   return `__T3CODE_ENV_${name}_START__`;
 }
