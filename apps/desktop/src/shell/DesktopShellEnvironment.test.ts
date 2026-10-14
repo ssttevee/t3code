@@ -218,6 +218,30 @@ describe("DesktopShellEnvironment", () => {
     }),
   );
 
+  it.effect("replaces the inherited macOS default agent with the login-shell agent", () =>
+    Effect.gen(function* () {
+      const env: NodeJS.ProcessEnv = {
+        SHELL: "/bin/zsh",
+        PATH: "/usr/bin",
+        SSH_AUTH_SOCK: "/var/run/com.apple.launchd.example/Listeners",
+      };
+
+      yield* runShellEnvironment({
+        env,
+        platform: "darwin",
+        handler: () =>
+          envOutput({
+            PATH: "/usr/bin",
+            SSH_AUTH_SOCK: "/tmp/agent.1299",
+            SSH_AGENT_PID: "1299",
+          }),
+      });
+
+      assert.equal(env.SSH_AUTH_SOCK, "/tmp/agent.1299");
+      assert.equal(env.SSH_AGENT_PID, "1299");
+    }),
+  );
+
   it.effect("preserves inherited POSIX values when present", () =>
     Effect.gen(function* () {
       const env: NodeJS.ProcessEnv = {

@@ -15,6 +15,7 @@ import {
   CommandResolutionCache,
   type CommandAvailabilityChecker,
   isCommandAvailable,
+  hydrateSshAgentEnvironment,
   listLoginShellCandidates,
   mergePathEntries,
   mergePathValues,
@@ -119,6 +120,54 @@ describe("readPathFromLaunchctl", () => {
     });
 
     expect(readPathFromLaunchctl(execFile)).toBeUndefined();
+  });
+});
+
+describe("hydrateSshAgentEnvironment", () => {
+  const shellEnvironment = { SSH_AUTH_SOCK: "/tmp/agent.1299", SSH_AGENT_PID: "1299" };
+
+  it.each(["darwin", "linux"] as const)("hydrates a missing agent on %s", (platform) => {
+    const env: NodeJS.ProcessEnv = {};
+    hydrateSshAgentEnvironment(env, shellEnvironment, platform);
+    expect(env).toEqual(shellEnvironment);
+  });
+
+  it.each([
+    "/var/run/com.apple.launchd.example/Listeners",
+    "/private/var/run/com.apple.launchd.example/Listeners",
+    "/tmp/com.apple.launchd.example/Listeners",
+    "/private/tmp/com.apple.launchd.example/Listeners",
+  ])("replaces the macOS default socket %s with the shell agent", (socket) => {
+    const env: NodeJS.ProcessEnv = { SSH_AUTH_SOCK: socket, SSH_AGENT_PID: "42" };
+    hydrateSshAgentEnvironment(env, shellEnvironment, "darwin");
+    expect(env).toEqual(shellEnvironment);
+  });
+
+  it.each(["darwin", "linux"] as const)("preserves an explicit agent on %s", (platform) => {
+    const env = { SSH_AUTH_SOCK: "/tmp/forwarded.sock", SSH_AGENT_PID: "42" };
+    hydrateSshAgentEnvironment(env, shellEnvironment, platform);
+    expect(env).toEqual({ SSH_AUTH_SOCK: "/tmp/forwarded.sock", SSH_AGENT_PID: "42" });
+  });
+
+  it("preserves the inherited agent when the shell has no socket", () => {
+    const env = { SSH_AUTH_SOCK: "/var/run/com.apple.launchd.example/Listeners" };
+    hydrateSshAgentEnvironment(env, { SSH_AGENT_PID: "1299" }, "darwin");
+    expect(env).toEqual({ SSH_AUTH_SOCK: "/var/run/com.apple.launchd.example/Listeners" });
+  });
+
+  it("does not keep a PID belonging to the replaced agent", () => {
+    const env: NodeJS.ProcessEnv = {
+      SSH_AUTH_SOCK: "/tmp/com.apple.launchd.example/Listeners",
+      SSH_AGENT_PID: "42",
+    };
+    hydrateSshAgentEnvironment(env, { SSH_AUTH_SOCK: "/tmp/secretive.sock" }, "darwin");
+    expect(env).toEqual({ SSH_AUTH_SOCK: "/tmp/secretive.sock" });
+  });
+
+  it("does not treat launchd-style paths as defaults on Linux", () => {
+    const env = { SSH_AUTH_SOCK: "/tmp/com.apple.launchd.example/Listeners" };
+    hydrateSshAgentEnvironment(env, shellEnvironment, "linux");
+    expect(env.SSH_AUTH_SOCK).toBe("/tmp/com.apple.launchd.example/Listeners");
   });
 });
 

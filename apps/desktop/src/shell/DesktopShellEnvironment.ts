@@ -1,4 +1,4 @@
-import { listLoginShellCandidates } from "@t3tools/shared/shell";
+import { hydrateSshAgentEnvironment, listLoginShellCandidates } from "@t3tools/shared/shell";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -76,6 +76,7 @@ const LOGIN_SHELL_ENV_NAMES = [
   "LC_ALL",
   "LC_CTYPE",
   "SSH_AUTH_SOCK",
+  "SSH_AGENT_PID",
   "HOMEBREW_PREFIX",
   "HOMEBREW_CELLAR",
   "HOMEBREW_REPOSITORY",
@@ -425,9 +426,7 @@ const installPosixEnvironment = Effect.fn("desktop.shellEnvironment.installPosix
     if (Option.isSome(mergedPath)) {
       config.env.PATH = mergedPath.value;
     }
-    if (!config.env.SSH_AUTH_SOCK && shellEnvironment.SSH_AUTH_SOCK) {
-      config.env.SSH_AUTH_SOCK = shellEnvironment.SSH_AUTH_SOCK;
-    }
+    hydrateSshAgentEnvironment(config.env, shellEnvironment, config.platform);
 
     const shellPreferredEnvNames = [
       "DBUS_SESSION_BUS_ADDRESS",

@@ -98,6 +98,66 @@ effectIt.effect("hydrates PATH when the desktop handoff is absent", () =>
   ),
 );
 
+effectIt.effect.each([
+  { platform: "darwin", inheritedSocket: undefined, expectedSocket: "/tmp/agent.1299" },
+  { platform: "linux", inheritedSocket: undefined, expectedSocket: "/tmp/agent.1299" },
+  {
+    platform: "darwin",
+    inheritedSocket: "/var/run/com.apple.launchd.example/Listeners",
+    expectedSocket: "/tmp/agent.1299",
+  },
+  {
+    platform: "darwin",
+    inheritedSocket: "/tmp/forwarded.sock",
+    expectedSocket: "/tmp/forwarded.sock",
+  },
+  {
+    platform: "linux",
+    inheritedSocket: "/tmp/forwarded.sock",
+    expectedSocket: "/tmp/forwarded.sock",
+  },
+] as const)(
+  "hydrates the server agent on $platform with inherited socket $inheritedSocket",
+  ({ platform, inheritedSocket, expectedSocket }) =>
+    Effect.acquireUseRelease(
+      Effect.sync(() =>
+        vi
+          .spyOn(NodeChildProcess, "execFileSync")
+          .mockReturnValue(
+            [
+              "__T3CODE_ENV_PATH_START__",
+              "/usr/bin",
+              "__T3CODE_ENV_PATH_END__",
+              "__T3CODE_ENV_SSH_AUTH_SOCK_START__",
+              "/tmp/agent.1299",
+              "__T3CODE_ENV_SSH_AUTH_SOCK_END__",
+              "__T3CODE_ENV_SSH_AGENT_PID_START__",
+              "1299",
+              "__T3CODE_ENV_SSH_AGENT_PID_END__",
+            ].join("\n"),
+          ),
+      ),
+      () =>
+        Effect.gen(function* () {
+          const env: NodeJS.ProcessEnv = {
+            SHELL: "/bin/zsh",
+            PATH: "/usr/bin",
+            ...(inheritedSocket ? { SSH_AUTH_SOCK: inheritedSocket, SSH_AGENT_PID: "42" } : {}),
+          };
+
+          yield* fixPath().pipe(
+            Effect.provideService(HostProcess.Platform, platform),
+            Effect.provideService(HostProcess.Environment, env),
+            Effect.provide(NodeServices.layer),
+          );
+
+          assert.equal(env.SSH_AUTH_SOCK, expectedSocket);
+          assert.equal(env.SSH_AGENT_PID, expectedSocket === "/tmp/agent.1299" ? "1299" : "42");
+        }),
+      (probe) => Effect.sync(() => probe.mockRestore()),
+    ),
+);
+
 effectIt.effect("keeps mise's PATH record with the login shell PATH", () =>
   Effect.acquireUseRelease(
     Effect.sync(() =>
